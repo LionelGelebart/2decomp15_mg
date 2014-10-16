@@ -29,7 +29,7 @@ FFT=fftw3_f03
 
 # Inlcude path if necessary (change to your actual paths)
 MKL_PATH=/opt/intel/mkl
-FFTW_PATH=/gpfslocal/pub/fftw/build_3.3.3_intel
+FFTW_PATH=/usr/local
 ifeq ($(FFT),mkl)
   INC=-I$(MKL_PATH)/include
   # Fortran compiler used to compile MKL mod files
