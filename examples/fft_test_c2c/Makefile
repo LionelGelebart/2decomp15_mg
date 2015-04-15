@@ -6,7 +6,7 @@ LIBS = -L../../lib -l2decomp_fft $(LIBFFT)
 OBJ = fft_test_c2c.o
 
 fft_test_c2c: $(OBJ)
-	$(F90) -o $@ $(OBJ) $(LIBS)
+	$(F90) -o $@ $(OBJ) $(LIBS) $(OMP)
 
 clean:
 	rm -f *.o fft_test_c2c

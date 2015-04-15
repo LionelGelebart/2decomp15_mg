@@ -11,7 +11,7 @@ LIBS = -L../../lib -l2decomp_fft -L$(FFTW3_PATH)/lib -lfftw3 -lfftw3f -L$(GA_PAT
 all: ga_test
 
 ga_test: ga_test.o
-	$(F90) -o $@ $@.o $(LIBS)
+	$(F90) -o $@ $@.o $(LIBS) $(OMP)
 
 clean:
 	rm -f *.o ga_test
