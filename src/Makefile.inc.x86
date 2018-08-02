@@ -29,15 +29,15 @@ FFT=generic
 
 # Inlcude path if necessary (change to your actual paths)
 MKL_PATH=/opt/intel/mkl
-FFTW_PATH=/opt/fftw-3.3
+FFTW_inc=/opt/fftw-3.3/include
 ifeq ($(FFT),mkl)
   INC=-I$(MKL_PATH)/include
   # Fortran compiler used to compile MKL mod files
   IFORT=gfortran
 else ifeq ($(FFT),fftw3)
-  INC=-I$(FFTW_PATH)/include
+  INC=-I$(FFTW_inc)
 else ifeq ($(FFT),fftw3_f03)
-  INC=-I$(FFTW_PATH)/include
+  INC=-I$(FFTW_inc)
 else
   INC=
 endif
@@ -74,7 +74,8 @@ CFLAGS=-O3
 #-----------------------External Library------------------------------
 
 # For FFTW
-LIB_FFTW3=-L$(FFTW_PATH)/lib -lfftw3f -lfftw3
+FFTW_lib=/opt/fftw-3.3/lib
+LIB_FFTW3=-L$(FFTW_lib) -lfftw3f -lfftw3
 
 # For ACML
 # This assumes that 32-bit ACML installed at /opt/. Adjust properly.
