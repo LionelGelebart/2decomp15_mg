@@ -52,8 +52,10 @@
     call MPI_INFO_CREATE(info, ierror)
     gs = ceiling(real(sizes(1),mytype)*real(sizes(2),mytype)* &
          real(sizes(3),mytype)/1024./1024.)
+    !call t3pio_set_info(MPI_COMM_WORLD, info, "./", ierror, &
+    !     GLOBAL_SIZE=gs, factor=1)
     call t3pio_set_info(MPI_COMM_WORLD, info, "./", ierror, &
-         GLOBAL_SIZE=gs, factor=1)
+         GLOBAL_SIZE=gs)
 #endif
 
     call MPI_TYPE_CREATE_SUBARRAY(3, sizes, subsizes, starts,  &
