@@ -61,11 +61,14 @@ CPPFLAGS=-cpp
 # enable Cray pointer support if needed
 CRAYPTR=-fcray-pointer
 # optimisation or debugging flags
-#OPTIM=-g -fcheck=all
-OPTIM=-O3
+#OPTIM_2decomp=-g -fcheck=all
+OPTIM_2decomp=-O3
 
-F90FLAGS=$(OPTIM) $(CRAYPTR) $(CPPFLAGS) $(INC)
-LDFLAGS=$(OPTIM)
+F90FLAGS=$(OPTIM_2decomp) $(CRAYPTR) $(CPPFLAGS) $(INC)
+LDFLAGS=$(OPTIM_2decomp)
+
+OPTIM_amitex=-O3
+F90FLAGS_amitex=$(OPTIM_amitex) $(CRAYPTR) $(CPPFLAGS) $(INC)
 
 #--------------------------C Compiler---------------------------------
 CC=mpicc
