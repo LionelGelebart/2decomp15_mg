@@ -1,7 +1,7 @@
-.PHONY: test2d fft_test_c2c fft_test_r2c timing halo_test io_test
+.PHONY: test2d fft_test_c2c fft_test_r2c timing halo_test io_test fft_test_r2c_mg
 
 # Just build the examples
-examples: test2d fft_test_c2c fft_test_r2c timing halo_test io_test
+examples: test2d fft_test_c2c fft_test_r2c timing halo_test io_test fft_test_r2c_mg
 	@echo "Built the examples"
 
 test2d:
@@ -16,6 +16,8 @@ halo_test:
 	cd halo_test; $(MAKE) $@
 io_test:
 	cd io_test; $(MAKE) $@
+fft_test_r2c_mg:
+	cd fft_test_r2c_mg; $(MAKE) $@
 
 # test all the examples (individual Makefiels should take care of updating)
 basic_test:
@@ -25,6 +27,7 @@ basic_test:
 	cd timing; $(MAKE) $@
 	cd halo_test; $(MAKE) $@
 	cd io_test; $(MAKE) $@
+	cd fft_test_r2c_mg; $(MAKE) $@
 
 clean:
 	cd test2d; $(MAKE) $@
@@ -33,3 +36,4 @@ clean:
 	cd timing; $(MAKE) $@
 	cd halo_test; $(MAKE) $@
 	cd io_test; $(MAKE) $@
+	cd fft_test_r2c_mg; $(MAKE) $@

@@ -34,7 +34,7 @@ module decomp_2d_fft
   ! For r2c/c2r transforms:
   !     use plan(0,j) for r2c transforms;
   !     use plan(2,j) for c2r transforms;
-  type(C_PTR), save :: plan(-1:2,3)
+  type(C_PTR), pointer, dimension(:,:), save :: plan
 
   integer, parameter, public :: DECOMP_2D_FFT_FORWARD = -1
   integer, parameter, public :: DECOMP_2D_FFT_BACKWARD = 1
@@ -43,25 +43,38 @@ module decomp_2d_fft
   integer, parameter, public :: PHYSICAL_IN_X = 1
   integer, parameter, public :: PHYSICAL_IN_Z = 3 
 
-  integer, save :: format                 ! input X-pencil or Z-pencil
-  
-  ! The libary can only be initialised once
-  logical, save :: initialised = .false. 
+  integer, pointer, save :: format          ! input X-pencil or Z-pencil
+
+  ! Number of initialisation
+  integer, save :: initialised = 0 
 
   ! Global size of the FFT
-  integer, save :: nx_fft, ny_fft, nz_fft
+  integer, pointer, save :: nx_fft, ny_fft, nz_fft
 
-  ! 2D processor grid
+  ! 2D processor grid (common to the different grids)
   integer, save, dimension(2) :: dims
 
   ! Decomposition objects
-  TYPE(DECOMP_INFO), save :: ph  ! physical space
-  TYPE(DECOMP_INFO), save :: sp  ! spectral space
+  TYPE(DECOMP_INFO), pointer, save :: ph  ! physical space
+  TYPE(DECOMP_INFO), pointer, save :: sp  ! spectral space
 
   ! Workspace to store the intermediate Y-pencil data
   ! *** TODO: investigate how to use only one workspace array
   complex(mytype), pointer :: wk2_c2c(:,:,:), wk2_r2c(:,:,:), wk13(:,:,:)
-  type(C_PTR) :: wk2_c2c_p, wk2_r2c_p, wk13_p
+  type(C_PTR), pointer     :: wk2_c2c_p, wk2_r2c_p, wk13_p
+
+  ! Derived-type gathering informations for 2decomp_2D_fft for multigrid purpose
+  type DECOMP_FFT_MULTIGRID
+      integer                  :: format
+      integer                  :: nx_fft, ny_fft, nz_fft
+      TYPE(DECOMP_INFO)        :: ph  ! physical space
+      TYPE(DECOMP_INFO)        :: sp  ! spectral space
+      complex(mytype), pointer :: wk2_c2c(:,:,:), wk2_r2c(:,:,:), wk13(:,:,:)
+      type(C_PTR)              :: wk2_c2c_p, wk2_r2c_p, wk13_p   
+      type(C_PTR)              :: plan(-1:2,3)   
+  end type DECOMP_FFT_MULTIGRID
+  
+  type(DECOMP_FFT_MULTIGRID), allocatable, dimension(:), target :: FFT_multigrid
 
   public :: decomp_2d_fft_init, decomp_2d_fft_3d, &
        decomp_2d_fft_finalize, decomp_2d_fft_get_size
@@ -72,6 +85,7 @@ module decomp_2d_fft
      module procedure fft_init_noarg
      module procedure fft_init_arg
      module procedure fft_init_general
+     module procedure fft_init_general_multigrid     
   end interface
   
   interface decomp_2d_fft_3d
@@ -107,29 +121,65 @@ contains
     return
   end subroutine fft_init_arg
 
-  ! Initialise the FFT library to perform arbitrary size transforms
   subroutine fft_init_general(pencil, nx, ny, nz)
+    implicit none
+
+    integer, intent(IN) :: pencil
+    integer, intent(IN) :: nx, ny, nz
+  
+    integer :: Igrid, Ngrid
+    
+    Igrid = 1
+    Ngrid = 1
+  
+    call fft_init_general_multigrid(pencil, nx, ny, nz, Igrid, Ngrid)
+  
+  end subroutine fft_init_general
+
+  ! Initialise the FFT library to perform arbitrary size transforms on various grids
+  subroutine fft_init_general_multigrid(pencil, nx, ny, nz, Igrid, Ngrid)
 
     implicit none
 
     integer, intent(IN) :: pencil
     integer, intent(IN) :: nx, ny, nz
+    integer, intent(IN) :: Igrid, Ngrid
 
     logical, dimension(2) :: dummy_periods
     integer, dimension(2) :: dummy_coords
     integer :: status, errorcode
     integer(C_SIZE_T) :: sz, ierror
 
-    if (initialised) then
-       errorcode = 4
-       call decomp_2d_abort(errorcode, &
-            'FFT library should only be initialised once')
+    ! allocate FFT_multigrid if first call
+    if (initialised == 0) then
+      allocate(FFT_multigrid(Ngrid))
     end if
     
-    format = pencil
-    nx_fft = nx
-    ny_fft = ny
-    nz_fft = nz
+    ! checks
+    if (Igrid > Ngrid) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'FFT library initialisation : Igrid > Ngrid')
+    elseif (Ngrid /= size(FFT_multigrid)) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'FFT library initialisation : Ngrid must be constant in all initialisation')    
+    elseif (initialised + 1  > size(FFT_multigrid)) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'FFT library initialisation : number of call incompatible with first Ngrid')
+    end if
+    
+    
+    FFT_multigrid(Igrid)%format = pencil
+    FFT_multigrid(Igrid)%nx_fft = nx
+    FFT_multigrid(Igrid)%ny_fft = ny
+    FFT_multigrid(Igrid)%nz_fft = nz
+    format => FFT_multigrid(Igrid)%format
+    nx_fft => FFT_multigrid(Igrid)%nx_fft
+    ny_fft => FFT_multigrid(Igrid)%ny_fft
+    nz_fft => FFT_multigrid(Igrid)%nz_fft
+ 
 
     ! determine the processor grid in use
     call MPI_CART_GET(DECOMP_2D_COMM_CART_X, 2, &
@@ -141,38 +191,47 @@ contains
     !         (nx/2+1)*ny*nz, if PHYSICAL_IN_X
     !      or nx*ny*(nz/2+1), if PHYSICAL_IN_Z
 
-    call decomp_info_init(nx, ny, nz, ph)
+    call decomp_info_init(nx, ny, nz, FFT_multigrid(Igrid)%ph)
     if (format==PHYSICAL_IN_X) then
-       call decomp_info_init(nx/2+1, ny, nz, sp)
+       call decomp_info_init(nx/2+1, ny, nz, FFT_multigrid(Igrid)%sp)
     else if (format==PHYSICAL_IN_Z) then
-       call decomp_info_init(nx, ny, nz/2+1, sp)
+       call decomp_info_init(nx, ny, nz/2+1, FFT_multigrid(Igrid)%sp)
     end if
 
+    ph => FFT_multigrid(Igrid)%ph
+    sp => FFT_multigrid(Igrid)%sp
+
     sz = ph%ysz(1)*ph%ysz(2)*ph%ysz(3)
-    wk2_c2c_p = fftw_alloc_complex(sz)
-    call c_f_pointer(wk2_c2c_p,wk2_c2c,[ph%ysz(1),ph%ysz(2),ph%ysz(3)])
+    FFT_multigrid(Igrid)%wk2_c2c_p = fftw_alloc_complex(sz)
+    call c_f_pointer(FFT_multigrid(Igrid)%wk2_c2c_p,FFT_multigrid(Igrid)%wk2_c2c,[ph%ysz(1),ph%ysz(2),ph%ysz(3)])
+    wk2_c2c_p => FFT_multigrid(Igrid)%wk2_c2c_p
+    wk2_c2c   => FFT_multigrid(Igrid)%wk2_c2c
 
     sz = sp%ysz(1)*sp%ysz(2)*sp%ysz(3)
-    wk2_r2c_p = fftw_alloc_complex(sz)
-    call c_f_pointer(wk2_r2c_p,wk2_r2c,[sp%ysz(1),sp%ysz(2),sp%ysz(3)])
-
+    FFT_multigrid(Igrid)%wk2_r2c_p = fftw_alloc_complex(sz)
+    call c_f_pointer(FFT_multigrid(Igrid)%wk2_r2c_p,FFT_multigrid(Igrid)%wk2_r2c,[sp%ysz(1),sp%ysz(2),sp%ysz(3)])
+    wk2_r2c_p => FFT_multigrid(Igrid)%wk2_r2c_p
+    wk2_r2c => FFT_multigrid(Igrid)%wk2_r2c
 
     if (format==PHYSICAL_IN_X) then
        sz = sp%xsz(1)*sp%xsz(2)*sp%xsz(3)
-       wk13_p = fftw_alloc_complex(sz)
-       call c_f_pointer(wk13_p,wk13,[sp%xsz(1),sp%xsz(2),sp%xsz(3)])
+       FFT_multigrid(Igrid)%wk13_p = fftw_alloc_complex(sz)
+       call c_f_pointer(FFT_multigrid(Igrid)%wk13_p,FFT_multigrid(Igrid)%wk13,[sp%xsz(1),sp%xsz(2),sp%xsz(3)])
     else if (format==PHYSICAL_IN_Z) then
        sz = sp%zsz(1)*sp%zsz(2)*sp%zsz(3)
-       wk13_p = fftw_alloc_complex(sz)
-       call c_f_pointer(wk13_p,wk13,[sp%zsz(1),sp%zsz(2),sp%zsz(3)])
+       FFT_multigrid(Igrid)%wk13_p = fftw_alloc_complex(sz)
+       call c_f_pointer(FFT_multigrid(Igrid)%wk13_p,FFT_multigrid(Igrid)%wk13,[sp%zsz(1),sp%zsz(2),sp%zsz(3)])
     end if
-
-    call init_fft_engine
+    wk13_p => FFT_multigrid(Igrid)%wk13_p
+    wk13   => FFT_multigrid(Igrid)%wk13
     
-    initialised = .true.
+    call init_fft_engine(Igrid)
+    plan => FFT_multigrid(Igrid)%plan
+    
+    initialised = initialised + 1
     
     return
-  end subroutine fft_init_general
+  end subroutine fft_init_general_multigrid
 
   
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -181,17 +240,25 @@ contains
   subroutine decomp_2d_fft_finalize
     
     implicit none
+    
+    integer :: Igrid
+    
+    do Igrid = 1,size(FFT_multigrid)
 
-    call decomp_info_finalize(ph)
-    call decomp_info_finalize(sp)
+      call decomp_info_finalize(FFT_multigrid(Igrid)%ph)
+      call decomp_info_finalize(FFT_multigrid(Igrid)%sp)
 
-    call fftw_free(wk2_c2c_p)
-    call fftw_free(wk2_r2c_p)
-    call fftw_free(wk13_p)
+      call fftw_free(FFT_multigrid(Igrid)%wk2_c2c_p)
+      call fftw_free(FFT_multigrid(Igrid)%wk2_r2c_p)
+      call fftw_free(FFT_multigrid(Igrid)%wk13_p)
+      
+    end do
 
     call finalize_fft_engine
-
-    initialised = .false.
+    
+    deallocate(FFT_multigrid)
+    
+    initialised = 0
 
     return
   end subroutine decomp_2d_fft_finalize
@@ -491,9 +558,11 @@ contains
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !  This routine performs one-time initialisations for the FFT engine
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_fft_engine
+  subroutine init_fft_engine(Igrid)
 
     implicit none
+
+    integer, intent(IN) :: Igrid
 
     if (nrank==0) then
        write(*,*) ' '
@@ -504,38 +573,38 @@ contains
     if (format == PHYSICAL_IN_X) then
 
        ! For C2C transforms
-       call c2c_1m_x_plan(plan(-1,1), ph, FFTW_FORWARD )
-       call c2c_1m_y_plan(plan(-1,2), ph, FFTW_FORWARD )
-       call c2c_1m_z_plan(plan(-1,3), ph, FFTW_FORWARD )
-       call c2c_1m_z_plan(plan( 1,3), ph, FFTW_BACKWARD)
-       call c2c_1m_y_plan(plan( 1,2), ph, FFTW_BACKWARD)
-       call c2c_1m_x_plan(plan( 1,1), ph, FFTW_BACKWARD)
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan(-1,1), ph, FFTW_FORWARD )
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(-1,2), ph, FFTW_FORWARD )
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan(-1,3), ph, FFTW_FORWARD )
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan( 1,3), ph, FFTW_BACKWARD)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan( 1,2), ph, FFTW_BACKWARD)
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan( 1,1), ph, FFTW_BACKWARD)
        
        ! For R2C/C2R tranforms
-       call r2c_1m_x_plan(plan(0,1), ph, sp)
-       call c2c_1m_y_plan(plan(0,2), sp, FFTW_FORWARD )
-       call c2c_1m_z_plan(plan(0,3), sp, FFTW_FORWARD )
-       call c2c_1m_z_plan(plan(2,3), sp, FFTW_BACKWARD)
-       call c2c_1m_y_plan(plan(2,2), sp, FFTW_BACKWARD)
-       call c2r_1m_x_plan(plan(2,1), sp, ph)
+       call r2c_1m_x_plan(FFT_multigrid(Igrid)%plan(0,1), ph, sp)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(0,2), sp, FFTW_FORWARD )
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan(0,3), sp, FFTW_FORWARD )
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan(2,3), sp, FFTW_BACKWARD)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(2,2), sp, FFTW_BACKWARD)
+       call c2r_1m_x_plan(FFT_multigrid(Igrid)%plan(2,1), sp, ph)
 
     else if (format == PHYSICAL_IN_Z) then
 
        ! For C2C transforms
-       call c2c_1m_z_plan(plan(-1,3), ph, FFTW_FORWARD )
-       call c2c_1m_y_plan(plan(-1,2), ph, FFTW_FORWARD ) 
-       call c2c_1m_x_plan(plan(-1,1), ph, FFTW_FORWARD )
-       call c2c_1m_x_plan(plan( 1,1), ph, FFTW_BACKWARD)
-       call c2c_1m_y_plan(plan( 1,2), ph, FFTW_BACKWARD)
-       call c2c_1m_z_plan(plan( 1,3), ph, FFTW_BACKWARD)
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan(-1,3), ph, FFTW_FORWARD )
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(-1,2), ph, FFTW_FORWARD ) 
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan(-1,1), ph, FFTW_FORWARD )
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan( 1,1), ph, FFTW_BACKWARD)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan( 1,2), ph, FFTW_BACKWARD)
+       call c2c_1m_z_plan(FFT_multigrid(Igrid)%plan( 1,3), ph, FFTW_BACKWARD)
        
        ! For R2C/C2R tranforms
-       call r2c_1m_z_plan(plan(0,3), ph, sp)
-       call c2c_1m_y_plan(plan(0,2), sp, FFTW_FORWARD )
-       call c2c_1m_x_plan(plan(0,1), sp, FFTW_FORWARD )
-       call c2c_1m_x_plan(plan(2,1), sp, FFTW_BACKWARD)
-       call c2c_1m_y_plan(plan(2,2), sp, FFTW_BACKWARD)
-       call c2r_1m_z_plan(plan(2,3), sp, ph)
+       call r2c_1m_z_plan(FFT_multigrid(Igrid)%plan(0,3), ph, sp)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(0,2), sp, FFTW_FORWARD )
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan(0,1), sp, FFTW_FORWARD )
+       call c2c_1m_x_plan(FFT_multigrid(Igrid)%plan(2,1), sp, FFTW_BACKWARD)
+       call c2c_1m_y_plan(FFT_multigrid(Igrid)%plan(2,2), sp, FFTW_BACKWARD)
+       call c2r_1m_z_plan(FFT_multigrid(Igrid)%plan(2,3), sp, ph)
        
     end if
 
@@ -550,16 +619,18 @@ contains
 
     implicit none
 
-    integer :: i,j
+    integer :: Igrid,i,j
     
+    do Igrid = 1, size(FFT_multigrid)
     do j=1,3
        do i=-1,2
 #ifdef DOUBLE_PREC
-          call fftw_destroy_plan(plan(i,j))
+          call fftw_destroy_plan(FFT_multigrid(Igrid)%plan(i,j))
 #else
-          call fftwf_destroy_plan(plan(i,j))
+          call fftwf_destroy_plan(FFT_multigrid(Igrid)%plan(i,j))
 #endif
        end do
+    end do
     end do
 
     return
