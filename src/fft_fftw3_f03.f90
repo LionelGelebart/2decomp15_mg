@@ -77,7 +77,8 @@ module decomp_2d_fft
   type(DECOMP_FFT_MULTIGRID), allocatable, dimension(:), target :: FFT_multigrid
 
   public :: decomp_2d_fft_init, decomp_2d_fft_3d, &
-       decomp_2d_fft_finalize, decomp_2d_fft_get_size
+       decomp_2d_fft_finalize, decomp_2d_fft_get_size,&
+       FFT_multigrid, associate_pointers_decomp_2d_fft
   
   ! Declare generic interfaces to handle different inputs
   
@@ -233,6 +234,30 @@ contains
     return
   end subroutine fft_init_general_multigrid
 
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! associate pointers for decomp_2d_fft
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  subroutine associate_pointers_decomp_2d_fft(Igrid)
+
+  implicit none
+  integer,intent(in) :: Igrid
+
+  format    => FFT_multigrid(Igrid)%format
+  nx_fft    => FFT_multigrid(Igrid)%nx_fft
+  ny_fft    => FFT_multigrid(Igrid)%ny_fft
+  nz_fft    => FFT_multigrid(Igrid)%nz_fft
+  ph        => FFT_multigrid(Igrid)%ph  ! physical space
+  sp        => FFT_multigrid(Igrid)%sp  ! spectral space
+  wk2_c2c   => FFT_multigrid(Igrid)%wk2_c2c
+  wk2_r2c   => FFT_multigrid(Igrid)%wk2_r2c
+  wk13      => FFT_multigrid(Igrid)%wk13
+  wk2_c2c_p => FFT_multigrid(Igrid)%wk2_c2c_p
+  wk2_r2c_p => FFT_multigrid(Igrid)%wk2_r2c_p
+  wk13_p    => FFT_multigrid(Igrid)%wk13_p   
+  plan      => FFT_multigrid(Igrid)%plan  
+
+  end subroutine associate_pointers_decomp_2d_fft
+
   
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Final clean up
@@ -269,10 +294,11 @@ contains
   !  whose global size is (nx/2+1)*ny*nz, for defining data structures
   !  in r2c and c2r interfaces
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine decomp_2d_fft_get_size(istart, iend, isize)
+  subroutine decomp_2d_fft_get_size(istart, iend, isize,jstart, jend, jsize)
     
     implicit none
     integer, dimension(3), intent(OUT) :: istart, iend, isize
+    integer, dimension(3), optional, intent(OUT) :: jstart, jend, jsize
     
     if (format==PHYSICAL_IN_X) then
        istart = sp%zst
@@ -282,6 +308,18 @@ contains
        istart = sp%xst
        iend   = sp%xen
        isize  = sp%xsz
+    end if
+    
+    if (present(jstart) .and. present(jend) .and. present(jsize)) then
+    if (format==PHYSICAL_IN_X) then
+       jstart = ph%xst
+       jend   = ph%xen
+       jsize  = ph%xsz
+    else if (format==PHYSICAL_IN_Z) then
+       jstart = ph%zst
+       jend   = ph%zen
+       jsize  = ph%zsz
+    end if
     end if
     
     return
