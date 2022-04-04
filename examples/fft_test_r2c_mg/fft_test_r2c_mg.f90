@@ -1,12 +1,21 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Main test program for the FFT r2c/c2r interface
 !  also demonstrate the use of the IO library 
+!
+! Example for using the enhanced API for multigrid purpose
+!---------------------------------------------------------
+!
+!   One call to : decomp_2d_init
+!   multiple initialization of grids          :   decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid,Ngrid)
+!                      => grid infos stored in FFT_multigrid(1:Ngrid)
+!   changing from one grid to another for FFT : associate_pointers_decomp_2d_fft(Igrid)
+!   to obtain sp. and ph. pencil sizes        : decomp_2d_fft_get_size(fft_start,fft_end,fft_size, xstart0, xend0, xsize0)
+!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 program fft_test_r2c_mg
 
-  use decomp_2d , only : decomp_2d_init, decomp_2d_finalize, nrank       !avoid conflict with local xstart, xend and xsize
-!  use decomp_2d , omitted1 => xstart, omitted2 => xend, omitted3 => xsize !other solution
+  use decomp_2d 
   use decomp_2d_fft
   use glassman
   use decomp_2d_io
@@ -22,7 +31,8 @@ program fft_test_r2c_mg
   real(mytype), allocatable, dimension(:,:,:) :: in, in2
   complex(mytype), allocatable, dimension(:,:,:) :: out
   
-  integer, dimension(3) :: fft_start, fft_end, fft_size, xstart,xend,xsize
+  integer, dimension(3)         :: fft_start, fft_end, fft_size
+  integer, dimension(3), target :: xstart0,xend0,xsize0
     
   real(mytype), allocatable, dimension(:,:,:) :: in_global, in_g2, in_g3
   complex(mytype), allocatable, dimension(:,:,:) :: out_global
@@ -38,15 +48,23 @@ program fft_test_r2c_mg
   
   call MPI_INIT(ierror)
   call decomp_2d_init(nx,ny,nz,p_row,p_col)
-  !call decomp_2d_fft_init
-  !call decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz)
-  Ngrid = 2
+  
+  Ngrid = 1 ! to tests the reallocation (Ngrid = 1 then Ngrid = 2)
   Igrid = 1
   call decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid,Ngrid)
   call MPI_BARRIER(MPI_COMM_WORLD,ierror)
+  Ngrid = 2 
   Igrid = 2
   call decomp_2d_fft_init(PHYSICAL_IN_X, 2*nx, 2*ny, 2*nz,Igrid,Ngrid)
   call MPI_BARRIER(MPI_COMM_WORLD,ierror)
+  !Ngrid = 1 ! to test check error => OK
+  !Igrid = 1 ! 
+  !call decomp_2d_fft_init(PHYSICAL_IN_X, 2*nx, 2*ny, 2*nz,Igrid,Ngrid)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierror)
+  !Ngrid = 2 ! to test check error => OK
+  !Igrid = 3 !
+  !call decomp_2d_fft_init(PHYSICAL_IN_X, 2*nx, 2*ny, 2*nz,Igrid,Ngrid)
+  !call MPI_BARRIER(MPI_COMM_WORLD,ierror)
   
 do Igrid = 1,2
 if (nrank==0) print *, "----------------- IGRID = ", Igrid  
@@ -65,8 +83,11 @@ if (nrank==0) print *, "----------------- IGRID = ", Igrid
 
   !-------------------------------------associate pointers and get grid sizes (in physical and spectral space)
   call associate_pointers_decomp_2d_fft(Igrid)
-  call decomp_2d_fft_get_size(fft_start,fft_end,fft_size, xstart, xend, xsize)
-
+  call decomp_2d_fft_get_size(fft_start,fft_end,fft_size, xstart0, xend0, xsize0)
+  xstart => xstart0  
+  xend   => xend0
+  xsize  => xsize0
+  
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Compute a small problem all on rank 0 as reference
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

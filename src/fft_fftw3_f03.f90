@@ -75,7 +75,8 @@ module decomp_2d_fft
   end type DECOMP_FFT_MULTIGRID
   
   type(DECOMP_FFT_MULTIGRID), allocatable, dimension(:), target :: FFT_multigrid
-
+  type(DECOMP_FFT_MULTIGRID), allocatable, dimension(:)         :: FFT_multigrid_tmp ! for reallocation purpose (move_alloc)
+  
   public :: decomp_2d_fft_init, decomp_2d_fft_3d, &
        decomp_2d_fft_finalize, decomp_2d_fft_get_size,&
        FFT_multigrid, associate_pointers_decomp_2d_fft
@@ -148,29 +149,39 @@ contains
 
     logical, dimension(2) :: dummy_periods
     integer, dimension(2) :: dummy_coords
-    integer :: status, errorcode
-    integer(C_SIZE_T) :: sz, ierror
+    integer               :: status, errorcode
+    integer(C_SIZE_T)     :: sz, ierror
+    integer               :: Ngrid0
 
     ! allocate FFT_multigrid if first call
     if (initialised == 0) then
       allocate(FFT_multigrid(Ngrid))
+    end if
+
+    Ngrid0 = size(FFT_multigrid)
+
+    ! reallocate FFT_multigrid if Ngrid > size(FFT_multigrid)
+    if (Ngrid > Ngrid0) then
+       allocate(FFT_multigrid_tmp(Ngrid))
+       FFT_multigrid_tmp(1:Ngrid0) = FFT_multigrid
+       call move_alloc(FROM=FFT_multigrid_tmp,TO=FFT_multigrid)
     end if
     
     ! checks
     if (Igrid > Ngrid) then
        errorcode = 4
        call decomp_2d_abort(errorcode, &
-            'FFT library initialisation : Igrid > Ngrid')
-    elseif (Ngrid /= size(FFT_multigrid)) then
+            'decomp_2d_fft, fft_init_general_multigrid : Igrid > Ngrid')
+    elseif (Ngrid < Ngrid0 ) then
        errorcode = 4
        call decomp_2d_abort(errorcode, &
-            'FFT library initialisation : Ngrid must be constant in all initialisation')    
-    elseif (initialised + 1  > size(FFT_multigrid)) then
+            'decomp_2d_fft, fft_init_general_multigrid : Ngrid must be >= current size(FFT_multigrid)')    
+    elseif (initialised + 1  > size(FFT_multigrid)) then ! Interet??
        errorcode = 4
        call decomp_2d_abort(errorcode, &
-            'FFT library initialisation : number of call incompatible with first Ngrid')
+            'decomp_2d_fft, fft_init_general_multigrid : number of call incompatible with size(FFT_multigrid)')
     end if
-    
+
     
     FFT_multigrid(Igrid)%format = pencil
     FFT_multigrid(Igrid)%nx_fft = nx
@@ -241,7 +252,15 @@ contains
 
   implicit none
   integer,intent(in) :: Igrid
+  
+  integer            :: errorcode
 
+  if (Igrid > size(FFT_multigrid)) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'decomp_2d_fft, associate_pointers_decomp_2d_fft : Igrid > size(FFT_multigrid)')
+  end if
+  
   format    => FFT_multigrid(Igrid)%format
   nx_fft    => FFT_multigrid(Igrid)%nx_fft
   ny_fft    => FFT_multigrid(Igrid)%ny_fft

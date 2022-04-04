@@ -133,13 +133,15 @@ module decomp_2d
   END TYPE DECOMP_INFO
 
   ! main (default) decomposition information for global size nx*ny*nz
-  TYPE(DECOMP_INFO), save :: decomp_main
+  ! modif LG : add target attribute
+  TYPE(DECOMP_INFO), save, target :: decomp_main
 
   ! staring/ending index and size of data held by current processor
   ! duplicate 'decomp_main', needed by apps to define data structure 
-  integer, save, dimension(3), public :: xstart, xend, xsize  ! x-pencil
-  integer, save, dimension(3), public :: ystart, yend, ysize  ! y-pencil
-  integer, save, dimension(3), public :: zstart, zend, zsize  ! z-pencil
+  ! modif LG : add pointer attribute
+  integer, save, dimension(:), pointer, public :: xstart, xend, xsize  ! x-pencil
+  integer, save, dimension(:), pointer, public :: ystart, yend, ysize  ! y-pencil
+  integer, save, dimension(:), pointer, public :: zstart, zend, zsize  ! z-pencil
 
   ! These are the buffers used by MPI_ALLTOALL(V) calls
   integer, save :: decomp_buf_size = 0
@@ -377,15 +379,16 @@ contains
     ! make a copy of the decomposition information associated with the
     ! default global size in these global variables so applications can
     ! use them to create data structures 
-    xstart = decomp_main%xst
-    ystart = decomp_main%yst
-    zstart = decomp_main%zst
-    xend   = decomp_main%xen
-    yend   = decomp_main%yen
-    zend   = decomp_main%zen
-    xsize  = decomp_main%xsz
-    ysize  = decomp_main%ysz
-    zsize  = decomp_main%zsz
+    ! modif LG : replace = (affectation) by => (pointer association)
+    xstart => decomp_main%xst
+    ystart => decomp_main%yst
+    zstart => decomp_main%zst
+    xend   => decomp_main%xen
+    yend   => decomp_main%yen
+    zend   => decomp_main%zen
+    xsize  => decomp_main%xsz
+    ysize  => decomp_main%ysz
+    zsize  => decomp_main%zsz
 
 #ifdef SHM_DEBUG
     ! print out shared-memory information
