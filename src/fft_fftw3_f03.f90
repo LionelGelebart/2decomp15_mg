@@ -14,7 +14,12 @@
 
 module decomp_2d_fft
   
-  use decomp_2d  ! 2D decomposition module
+  use decomp_2d, only : mytype, DECOMP_INFO, &         ! TYPES
+                        nrank, DECOMP_2D_COMM_CART_X,& ! VARIABLES common to all "grids"
+                        nx_global, ny_global, nz_global, & ! variables used ONLY with decomp_2d_fft_init and NO ARGUMENT
+                        decomp_info_init, decomp_info_finalize, decomp_2d_abort, & 
+                        transpose_y_to_z, transpose_y_to_x, transpose_x_to_y, transpose_z_to_y  
+  
   use, intrinsic :: iso_c_binding
   
   implicit none
@@ -54,7 +59,7 @@ module decomp_2d_fft
   ! 2D processor grid (common to the different grids)
   integer, save, dimension(2) :: dims
 
-  ! Decomposition objects
+  ! Decomposition objects (internal use)
   TYPE(DECOMP_INFO), pointer, save :: ph  ! physical space
   TYPE(DECOMP_INFO), pointer, save :: sp  ! spectral space
 
