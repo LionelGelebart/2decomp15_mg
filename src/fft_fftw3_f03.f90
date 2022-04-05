@@ -84,7 +84,7 @@ module decomp_2d_fft
   
   public :: decomp_2d_fft_init, decomp_2d_fft_3d, &
        decomp_2d_fft_finalize, decomp_2d_fft_get_size,&
-       FFT_multigrid, associate_pointers_decomp_2d_fft
+       associate_pointers_decomp_2d_fft, get_decomp_fft_info !,FFT_multigrid
   
   ! Declare generic interfaces to handle different inputs
   
@@ -103,7 +103,32 @@ module decomp_2d_fft
 
   
 contains
-  
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! Return the decomposition objects of 'active' pointers
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    subroutine get_decomp_fft_info(ph_decomp, sp_decomp)
+
+    implicit none
+
+    TYPE(DECOMP_INFO), intent(OUT) :: ph_decomp, sp_decomp
+
+    integer               :: errorcode
+
+    if (.not. associated(ph) .OR. .not. associated(sp)) then
+      errorcode = 4
+      call decomp_2d_abort(errorcode, &
+        'decomp_2d_fft, get_decomp_fft_info : sp or ph not associated')    
+    end if
+    
+    ph_decomp = ph
+    sp_decomp = sp
+        
+    return
+  end subroutine get_decomp_fft_info
+    
+
   
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialise the FFT module
@@ -143,6 +168,9 @@ contains
   end subroutine fft_init_general
 
   ! Initialise the FFT library to perform arbitrary size transforms on various grids
+  !       Increase size(FFT_multigrid) if necessary
+  !       Initialize FFT_multigrid(Igrid) (if not yet initialized)
+  !       Associate pointers
   subroutine fft_init_general_multigrid(pencil, nx, ny, nz, Igrid)
 
     implicit none
@@ -181,6 +209,11 @@ contains
                 'decomp_2d_fft, fft_init_general_multigrid : FFT_multigrid(Igrid) already initialized')    
     end if
     
+    !
+    !-------------------(Initialize AND associate) pointers if NOT initialized, 
+    !                            OR
+    !                   associate pointers if initialized
+    !
     if (FFT_multigrid(Igrid)%nx_fft == 0) then ! initialize if not initialized before 
     FFT_multigrid(Igrid)%format = pencil
     FFT_multigrid(Igrid)%nx_fft = nx
@@ -239,6 +272,8 @@ contains
     call init_fft_engine(Igrid)
     plan => FFT_multigrid(Igrid)%plan
     
+    else 
+      call associate_pointers_decomp_2d_fft(Igrid) ! associate pointers if already initialized
     end if ! initialize if not initialized before 
     
     initialised = initialised + 1

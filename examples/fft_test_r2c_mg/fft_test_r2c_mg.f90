@@ -6,8 +6,8 @@
 !---------------------------------------------------------
 !
 !   One call to : decomp_2d_init
-!   multiple initialization of grids          :   decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid,Ngrid)
-!                      => grid infos stored in FFT_multigrid(1:Ngrid)
+!   multiple initialization of grids          : decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid,Ngrid)
+!                      => for write function  : get decomp. info. from get_decomp_ff_info (new function in decomp_2d_fft)
 !   changing from one grid to another for FFT : associate_pointers_decomp_2d_fft(Igrid)
 !   to obtain sp. and ph. pencil sizes        : decomp_2d_fft_get_size(fft_start,fft_end,fft_size, xstart0, xend0, xsize0)
 !
@@ -33,6 +33,7 @@ program fft_test_r2c_mg
   
   integer, dimension(3)         :: fft_start, fft_end, fft_size
   integer, dimension(3), target :: xstart0,xend0,xsize0
+  type(DECOMP_INFO)             :: decomp_ph, decomp_sp
     
   real(mytype), allocatable, dimension(:,:,:) :: in_global, in_g2, in_g3
   complex(mytype), allocatable, dimension(:,:,:) :: out_global
@@ -151,7 +152,8 @@ if (nrank==0) print *, "----------------- IGRID = ", Igrid
   end do
   
   ! write input to file
-  call decomp_2d_write_var(fh,disp,1,in,FFT_multigrid(Igrid)%ph)
+  call get_decomp_fft_info(decomp_ph,decomp_sp)
+  call decomp_2d_write_var(fh,disp,1,in, decomp_ph)
   
   if (nrank==0) then
      write(*,*) ' '
@@ -181,7 +183,8 @@ if (nrank==0) print *, "----------------- IGRID = ", Igrid
   in2 = in2 / real(nx) / real(ny) / real(nz)
   
   ! write the data recovered by inverse FFT to file
-  call decomp_2d_write_var(fh,disp,1,in2,FFT_multigrid(Igrid)%ph)
+  call get_decomp_fft_info(decomp_ph,decomp_sp)
+  call decomp_2d_write_var(fh,disp,1,in2,decomp_ph)
   
   if (nrank==0) then
      write(*,*) ' - after backward transform and normalisation'
