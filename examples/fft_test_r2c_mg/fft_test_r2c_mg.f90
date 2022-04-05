@@ -49,13 +49,10 @@ program fft_test_r2c_mg
   call MPI_INIT(ierror)
   call decomp_2d_init(nx,ny,nz,p_row,p_col)
   
-  Ngrid = 1 ! to tests the reallocation (Ngrid = 1 then Ngrid = 2)
-  Igrid = 1
-  call decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid,Ngrid)
+  call decomp_2d_fft_init(PHYSICAL_IN_X, nx, ny, nz,Igrid=1)
   call MPI_BARRIER(MPI_COMM_WORLD,ierror)
-  Ngrid = 2 
-  Igrid = 2
-  call decomp_2d_fft_init(PHYSICAL_IN_X, 2*nx, 2*ny, 2*nz,Igrid,Ngrid)
+
+  call decomp_2d_fft_init(PHYSICAL_IN_X, 2*nx, 2*ny, 2*nz,Igrid=2)
   call MPI_BARRIER(MPI_COMM_WORLD,ierror)
   !Ngrid = 1 ! to test check error => OK
   !Igrid = 1 ! 

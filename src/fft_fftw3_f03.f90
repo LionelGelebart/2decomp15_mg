@@ -71,7 +71,7 @@ module decomp_2d_fft
   ! Derived-type gathering informations for 2decomp_2D_fft for multigrid purpose
   type DECOMP_FFT_MULTIGRID
       integer                  :: format
-      integer                  :: nx_fft, ny_fft, nz_fft
+      integer                  :: nx_fft=0, ny_fft=0, nz_fft=0 
       TYPE(DECOMP_INFO)        :: ph  ! physical space
       TYPE(DECOMP_INFO)        :: sp  ! spectral space
       complex(mytype), pointer :: wk2_c2c(:,:,:), wk2_r2c(:,:,:), wk13(:,:,:)
@@ -134,23 +134,22 @@ contains
     integer, intent(IN) :: pencil
     integer, intent(IN) :: nx, ny, nz
   
-    integer :: Igrid, Ngrid
+    integer :: Igrid
     
     Igrid = 1
-    Ngrid = 1
   
-    call fft_init_general_multigrid(pencil, nx, ny, nz, Igrid, Ngrid)
+    call fft_init_general_multigrid(pencil, nx, ny, nz, Igrid)
   
   end subroutine fft_init_general
 
   ! Initialise the FFT library to perform arbitrary size transforms on various grids
-  subroutine fft_init_general_multigrid(pencil, nx, ny, nz, Igrid, Ngrid)
+  subroutine fft_init_general_multigrid(pencil, nx, ny, nz, Igrid)
 
     implicit none
 
     integer, intent(IN) :: pencil
     integer, intent(IN) :: nx, ny, nz
-    integer, intent(IN) :: Igrid, Ngrid
+    integer, intent(IN) :: Igrid
 
     logical, dimension(2) :: dummy_periods
     integer, dimension(2) :: dummy_coords
@@ -158,36 +157,31 @@ contains
     integer(C_SIZE_T)     :: sz, ierror
     integer               :: Ngrid0
 
-    ! allocate FFT_multigrid if first call
+    ! allocate FFT_multigrid if first call : size = Igrid
     if (initialised == 0) then
-      allocate(FFT_multigrid(Ngrid))
+      allocate(FFT_multigrid(Igrid))
     end if
 
     Ngrid0 = size(FFT_multigrid)
 
-    ! reallocate FFT_multigrid if Ngrid > size(FFT_multigrid)
-    if (Ngrid > Ngrid0) then
-       allocate(FFT_multigrid_tmp(Ngrid))
+    ! reallocate FFT_multigrid if Igrid > size(FFT_multigrid) : size = Igrid
+    if (Igrid > Ngrid0) then
+       allocate(FFT_multigrid_tmp(Igrid))
        FFT_multigrid_tmp(1:Ngrid0) = FFT_multigrid
        call move_alloc(FROM=FFT_multigrid_tmp,TO=FFT_multigrid)
     end if
     
-    ! checks
-    if (Igrid > Ngrid) then
+    ! check if Igrid has been initialized before with different properties
+    if (FFT_multigrid(Igrid)%nx_fft /= 0 .AND. FFT_multigrid(Igrid)%nx_fft /= nx &
+                                         .AND. FFT_multigrid(Igrid)%nx_fft /= ny &
+                                         .AND. FFT_multigrid(Igrid)%nx_fft /= nz &
+                                         .AND. FFT_multigrid(Igrid)%format /= pencil) then
        errorcode = 4
        call decomp_2d_abort(errorcode, &
-            'decomp_2d_fft, fft_init_general_multigrid : Igrid > Ngrid')
-    elseif (Ngrid < Ngrid0 ) then
-       errorcode = 4
-       call decomp_2d_abort(errorcode, &
-            'decomp_2d_fft, fft_init_general_multigrid : Ngrid must be >= current size(FFT_multigrid)')    
-    elseif (initialised + 1  > size(FFT_multigrid)) then ! Interet??
-       errorcode = 4
-       call decomp_2d_abort(errorcode, &
-            'decomp_2d_fft, fft_init_general_multigrid : number of call incompatible with size(FFT_multigrid)')
+                'decomp_2d_fft, fft_init_general_multigrid : FFT_multigrid(Igrid) already initialized')    
     end if
-
     
+    if (FFT_multigrid(Igrid)%nx_fft == 0) then ! initialize if not initialized before 
     FFT_multigrid(Igrid)%format = pencil
     FFT_multigrid(Igrid)%nx_fft = nx
     FFT_multigrid(Igrid)%ny_fft = ny
@@ -244,6 +238,8 @@ contains
     
     call init_fft_engine(Igrid)
     plan => FFT_multigrid(Igrid)%plan
+    
+    end if ! initialize if not initialized before 
     
     initialised = initialised + 1
     
