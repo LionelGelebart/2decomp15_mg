@@ -21,20 +21,31 @@ module decomp_2d_fft
   private        ! Make everything private unless declared public
 
   ! engine-specific global variables
-  complex(mytype), allocatable, dimension(:) :: buf, scratch
+  complex(mytype), pointer, dimension(:) :: buf, scratch
+  
+  ! Derived-type gathering informations for 2decomp_2D_fft for multigrid purpose
+  ! Specific variables
+  type DECOMP_FFT_MULTIGRID_SPEC
+    complex(mytype), allocatable, dimension(:) :: buf, scratch
+  end type DECOMP_FFT_MULTIGRID_SPEC
+  
+  type(DECOMP_FFT_MULTIGRID_SPEC), allocatable, dimension(:), target :: FFT_multigrid_spec
+  type(DECOMP_FFT_MULTIGRID_SPEC), allocatable, dimension(:)         :: FFT_multigrid_spec_tmp ! for reallocation purpose (move_alloc)
 
   ! common code used for all engines, including global variables, 
-  ! generic interface definitions and several subroutines
+  ! generic interface definitions and several subroutines  
 #include "fft_common.f90"
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !  This routine performs one-time initialisations for the FFT engine
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_fft_engine
+  subroutine init_fft_engine(Igrid)
 
     implicit none
-
-    integer :: cbuf_size
+    
+    integer, intent(IN) :: Igrid
+    integer             :: cbuf_size
+    integer             :: Ngrid0
 
     if (nrank==0) then
        write(*,*) ' '
@@ -42,13 +53,53 @@ module decomp_2d_fft
        write(*,*) ' '
     end if
 
-    cbuf_size = max(ph%xsz(1), ph%ysz(2))
-    cbuf_size = max(cbuf_size, ph%zsz(3))
-    allocate(buf(cbuf_size))
-    allocate(scratch(cbuf_size))
+    ! allocate FFT_multigrid if first call : size = Igrid
+    if (initialised == 0) then
+      allocate(FFT_multigrid_spec(Igrid))
+    end if
 
+    Ngrid0 = size(FFT_multigrid_spec)
+
+    ! reallocate FFT_multigrid_spec if Igrid > size(FFT_multigrid_spec) : size = Igrid
+    if (Igrid > Ngrid0) then
+       allocate(FFT_multigrid_spec_tmp(Igrid))
+       FFT_multigrid_spec_tmp(1:Ngrid0) = FFT_multigrid_spec
+       call move_alloc(FROM=FFT_multigrid_spec_tmp,TO=FFT_multigrid_spec)
+    end if
+
+    if (.not. allocated(FFT_multigrid_spec(Igrid)%buf)) then ! initialize if not initialized before 
+      cbuf_size = max(FFT_multigrid(Igrid)%ph%xsz(1), FFT_multigrid(Igrid)%ph%ysz(2))
+      cbuf_size = max(cbuf_size, FFT_multigrid(Igrid)%ph%zsz(3))
+      allocate(FFT_multigrid_spec(Igrid)%buf(cbuf_size))
+      allocate(FFT_multigrid_spec(Igrid)%scratch(cbuf_size))
+      buf  => FFT_multigrid_spec(Igrid)%buf
+      scratch => FFT_multigrid_spec(Igrid)%scratch
+    else
+      call associate_pointers_decomp_2d_fft_spec(Igrid) ! associate pointers if already initialized
+    end if
+    
     return
   end subroutine init_fft_engine
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! associate specific pointers for decomp_2d_fft 
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  subroutine associate_pointers_decomp_2d_fft_spec(Igrid)
+
+  implicit none
+  integer,intent(in) :: Igrid
+  
+  integer            :: errorcode
+
+  if (Igrid > size(FFT_multigrid)) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'decomp_2d_fft, associate_pointers_decomp_2d_fft_spec : Igrid > size(FFT_multigrid_spec)')
+  end if
+  
+  buf      => FFT_multigrid_spec(Igrid)%buf
+  scratch  => FFT_multigrid_spec(Igrid)%scratch
+
+  end subroutine associate_pointers_decomp_2d_fft_spec
 
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -57,9 +108,15 @@ module decomp_2d_fft
   subroutine finalize_fft_engine
 
     implicit none
+    
+    integer :: Igrid,i,j
+    
+    do Igrid = 1, size(FFT_multigrid_spec)
 
-    deallocate(buf,scratch)
-
+       deallocate(FFT_multigrid_spec(Igrid)%buf,FFT_multigrid_spec(Igrid)%scratch)
+    
+    end do
+    
     return
   end subroutine finalize_fft_engine
 
