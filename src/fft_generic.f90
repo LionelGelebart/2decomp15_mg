@@ -109,7 +109,7 @@ module decomp_2d_fft
 
     implicit none
     
-    integer :: Igrid,i,j
+    integer :: Igrid
     
     do Igrid = 1, size(FFT_multigrid_spec)
 

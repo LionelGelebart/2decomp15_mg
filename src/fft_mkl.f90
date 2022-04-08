@@ -30,6 +30,20 @@ module decomp_2d_fft
   !  for r2c/c2r transforms, PHYSICAL_IN_Z
   type(DFTI_DESCRIPTOR), pointer :: r2c_z, c2c_x2, c2r_z
 
+
+  ! Derived-type gathering informations for 2decomp_2D_fft for multigrid purpose
+  ! Specific variables
+  type DECOMP_FFT_MULTIGRID_SPEC
+      type(DFTI_DESCRIPTOR), pointer :: c2c_x => null(), c2c_y  => null(), c2c_z  => null()     
+      type(DFTI_DESCRIPTOR), pointer :: r2c_x => null(), c2c_y2 => null(), c2c_z2 => null(), c2r_x => null()
+      type(DFTI_DESCRIPTOR), pointer :: r2c_z => null(), c2c_x2 => null(), c2r_z  => null()
+  end type DECOMP_FFT_MULTIGRID_SPEC
+  
+  type(DECOMP_FFT_MULTIGRID_SPEC), allocatable, dimension(:), target :: FFT_multigrid_spec
+  type(DECOMP_FFT_MULTIGRID_SPEC), allocatable, dimension(:)         :: FFT_multigrid_spec_tmp ! for reallocation purpose (move_alloc)
+
+
+
   ! common code used for all engines, including global variables, 
   ! generic interface definitions and several subroutines
 #include "fft_common.f90"
@@ -37,38 +51,109 @@ module decomp_2d_fft
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !  This routine performs one-time initialisations for the FFT engine
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_fft_engine
+  subroutine init_fft_engine(Igrid)
 
     implicit none
+    integer, intent(IN) :: Igrid
+    integer             :: Ngrid0
 
     if (nrank==0) then
        write(*,*) ' '
        write(*,*) '***** Using the MKL engine *****'
        write(*,*) ' '
     end if
+    
+    ! allocate FFT_multigrid if first call : size = Igrid
+    if (initialised == 0) then
+      allocate(FFT_multigrid_spec(Igrid))
+    end if
 
+    Ngrid0 = size(FFT_multigrid_spec)
+
+    ! reallocate FFT_multigrid_spec if Igrid > size(FFT_multigrid_spec) : size = Igrid
+    if (Igrid > Ngrid0) then
+       allocate(FFT_multigrid_spec_tmp(Igrid))
+       FFT_multigrid_spec_tmp(1:Ngrid0) = FFT_multigrid_spec
+       call move_alloc(FROM=FFT_multigrid_spec_tmp,TO=FFT_multigrid_spec)
+    end if
+
+    if (.not. associated(FFT_multigrid_spec(Igrid)%c2c_x)) then ! initialize if not initialized before 
     ! For C2C transforms
-    call c2c_1m_x_plan(c2c_x, ph)
-    call c2c_1m_y_plan(c2c_y, ph)
-    call c2c_1m_z_plan(c2c_z, ph)
-
+    call c2c_1m_x_plan(FFT_multigrid_spec(Igrid)%c2c_x, ph)
+    call c2c_1m_y_plan(FFT_multigrid_spec(Igrid)%c2c_y, ph)
+    call c2c_1m_z_plan(FFT_multigrid_spec(Igrid)%c2c_z, ph)
+    c2c_x => FFT_multigrid_spec(Igrid)%c2c_x
+    c2c_y => FFT_multigrid_spec(Igrid)%c2c_y
+    c2c_z => FFT_multigrid_spec(Igrid)%c2c_z
+    
     ! For R2C/C2R tranfroms with physical space in X-pencil
     if (format == PHYSICAL_IN_X) then
-       call r2c_1m_x_plan(r2c_x, ph, sp, -1)
-       call c2c_1m_y_plan(c2c_y2, sp)
-       call c2c_1m_z_plan(c2c_z2, sp)
-       call r2c_1m_x_plan(c2r_x, ph, sp,  1)
-
+       call r2c_1m_x_plan(FFT_multigrid_spec(Igrid)%r2c_x, ph, sp, -1)
+       call c2c_1m_y_plan(FFT_multigrid_spec(Igrid)%c2c_y2, sp)
+       call c2c_1m_z_plan(FFT_multigrid_spec(Igrid)%c2c_z2, sp)
+       call r2c_1m_x_plan(FFT_multigrid_spec(Igrid)%c2r_x, ph, sp,  1)
+       r2c_x  => FFT_multigrid_spec(Igrid)%r2c_x
+       c2c_y2 => FFT_multigrid_spec(Igrid)%c2c_y2
+       c2c_z2 => FFT_multigrid_spec(Igrid)%c2c_z2
+       c2r_x  => FFT_multigrid_spec(Igrid)%c2r_x
     ! For R2C/C2R tranfroms with physical space in Z-pencil
     else if (format == PHYSICAL_IN_Z) then
-       call r2c_1m_z_plan(r2c_z, ph, sp, -1)
-       call c2c_1m_y_plan(c2c_y2, sp)
-       call c2c_1m_x_plan(c2c_x2, sp)
-       call r2c_1m_z_plan(c2r_z, ph, sp,  1)
+       call r2c_1m_z_plan(FFT_multigrid_spec(Igrid)%r2c_z, ph, sp, -1)
+       call c2c_1m_y_plan(FFT_multigrid_spec(Igrid)%c2c_y2, sp)
+       call c2c_1m_x_plan(FFT_multigrid_spec(Igrid)%c2c_x2, sp)
+       call r2c_1m_z_plan(FFT_multigrid_spec(Igrid)%c2r_z, ph, sp,  1)
+       r2c_z  => FFT_multigrid_spec(Igrid)%r2c_z
+       c2c_y2 => FFT_multigrid_spec(Igrid)%c2c_y2
+       c2c_x2 => FFT_multigrid_spec(Igrid)%c2c_x2
+       c2r_z  => FFT_multigrid_spec(Igrid)%c2r_z
+    end if
+    
+    else
+      call associate_pointers_decomp_2d_fft_spec(Igrid) ! associate pointers if already initialized    
     end if
 
     return
   end subroutine init_fft_engine
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! associate pointers for decomp_2d_fft
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  
+  subroutine associate_pointers_decomp_2d_fft_spec(Igrid)
+
+  implicit none
+  integer,intent(in) :: Igrid
+  
+  integer            :: errorcode
+
+  if (Igrid > size(FFT_multigrid)) then
+       errorcode = 4
+       call decomp_2d_abort(errorcode, &
+            'decomp_2d_fft, associate_pointers_decomp_2d_fft_spec : Igrid > size(FFT_multigrid)')
+  end if
+  
+
+
+    ! For C2C transforms
+    c2c_x => FFT_multigrid_spec(Igrid)%c2c_x
+    c2c_y => FFT_multigrid_spec(Igrid)%c2c_y
+    c2c_z => FFT_multigrid_spec(Igrid)%c2c_z
+    
+    ! For R2C/C2R tranfroms with physical space in X-pencil
+    if (format == PHYSICAL_IN_X) then
+       r2c_x  => FFT_multigrid_spec(Igrid)%r2c_x
+       c2c_y2 => FFT_multigrid_spec(Igrid)%c2c_y2
+       c2c_z2 => FFT_multigrid_spec(Igrid)%c2c_z2
+       c2r_x  => FFT_multigrid_spec(Igrid)%c2r_x
+    ! For R2C/C2R tranfroms with physical space in Z-pencil
+    else if (format == PHYSICAL_IN_Z) then
+       r2c_z  => FFT_multigrid_spec(Igrid)%r2c_z
+       c2c_y2 => FFT_multigrid_spec(Igrid)%c2c_y2
+       c2c_x2 => FFT_multigrid_spec(Igrid)%c2c_x2
+       c2r_z  => FFT_multigrid_spec(Igrid)%c2r_z
+    end if
+
+  end subroutine associate_pointers_decomp_2d_fft_spec
 
   
   ! Return an MKL plan for multiple 1D c2c FFTs in X direction
@@ -257,21 +342,26 @@ module decomp_2d_fft
     implicit none
 
     integer :: status
+    integer :: Igrid
     
-    status = DftiFreeDescriptor(c2c_x)
-    status = DftiFreeDescriptor(c2c_y)
-    status = DftiFreeDescriptor(c2c_z)
+    do Igrid = 1, size(FFT_multigrid_spec)
+    
+    status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_x)
+    status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_y)
+    status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_z)
     if (format==PHYSICAL_IN_X) then
-       status = DftiFreeDescriptor(r2c_x)
-       status = DftiFreeDescriptor(c2c_z2)
-       status = DftiFreeDescriptor(c2r_x)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%r2c_x)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_z2)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2r_x)
     else if (format==PHYSICAL_IN_Z) then
-       status = DftiFreeDescriptor(r2c_z)
-       status = DftiFreeDescriptor(c2c_x2)
-       status = DftiFreeDescriptor(c2r_z)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%r2c_z)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_x2)
+       status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2r_z)
     end if
-    status = DftiFreeDescriptor(c2c_y2)
-
+    status = DftiFreeDescriptor(FFT_multigrid_spec(Igrid)%c2c_y2)
+    
+    end do
+    
     return
   end subroutine finalize_fft_engine
 
