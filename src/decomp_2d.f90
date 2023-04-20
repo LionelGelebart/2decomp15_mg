@@ -45,7 +45,8 @@ module decomp_2d
   integer, save, public :: mytype_bytes
 
   ! some key global variables
-  integer, save, public :: nx_global, ny_global, nz_global  ! global size
+  integer, save, pointer, public :: nx_global, ny_global, nz_global  ! global size  - modif LG : add pointer attribute
+
 
   integer, save, public :: nrank  ! local MPI rank 
   integer, save, public :: nproc  ! total number of processors
@@ -300,7 +301,7 @@ contains
 
     implicit none
 
-    integer, intent(IN) :: nx,ny,nz,p_row,p_col
+    integer, target, intent(IN) :: nx,ny,nz,p_row,p_col   ! modif LG : add target attribute
     logical, dimension(3), intent(IN), optional :: periodic_bc
     
     integer :: errorcode, ierror, row, col
@@ -309,9 +310,9 @@ contains
     character(len=80) fname
 #endif
 
-    nx_global = nx
-    ny_global = ny
-    nz_global = nz
+    nx_global => nx ! modif LG : pointer association instead of =
+    ny_global => ny
+    nz_global => nz
 
     if (present(periodic_bc)) then
        periodic_x = periodic_bc(1)
