@@ -13,7 +13,12 @@
 
 module decomp_2d_fft
   
-  use decomp_2d  ! 2D decomposition module
+  use decomp_2d, only : mytype, DECOMP_INFO, &         ! TYPES
+                        nrank, DECOMP_2D_COMM_CART_X,& ! VARIABLES common to all "grids"
+                        nx_global, ny_global, nz_global, & ! for pointer association and if decomp_2d_fft_init with NO ARGUMENT
+                        xstart,xend,xsize,ystart,yend,ysize,zstart,zend,zsize, &  ! for pointer association
+                        decomp_info_init, decomp_info_finalize, decomp_2d_abort, & 
+                        transpose_y_to_z, transpose_y_to_x, transpose_x_to_y, transpose_z_to_y  
   use glassman
   
   implicit none

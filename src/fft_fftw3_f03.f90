@@ -16,7 +16,8 @@ module decomp_2d_fft
   
   use decomp_2d, only : mytype, DECOMP_INFO, &         ! TYPES
                         nrank, DECOMP_2D_COMM_CART_X,& ! VARIABLES common to all "grids"
-                        nx_global, ny_global, nz_global, & ! variables used ONLY with decomp_2d_fft_init and NO ARGUMENT
+                        nx_global, ny_global, nz_global, & ! for pointer association and if decomp_2d_fft_init with NO ARGUMENT
+                        xstart,xend,xsize,ystart,yend,ysize,zstart,zend,zsize, &  ! for pointer association
                         decomp_info_init, decomp_info_finalize, decomp_2d_abort, & 
                         transpose_y_to_z, transpose_y_to_x, transpose_x_to_y, transpose_z_to_y  
   
@@ -77,6 +78,11 @@ module decomp_2d_fft
       complex(mytype), pointer :: wk2_c2c(:,:,:), wk2_r2c(:,:,:), wk13(:,:,:)
       type(C_PTR)              :: wk2_c2c_p, wk2_r2c_p, wk13_p   
       type(C_PTR)              :: plan(-1:2,3)   
+      ! targets for 2decomp pointers
+      integer                  :: nx_global, ny_global, nz_global  
+      integer, dimension(3)    :: xstart, xend, xsize  ! x-pencil
+      integer, dimension(3)    :: ystart, yend, ysize  ! y-pencil (not very usefull here)
+      integer, dimension(3)    :: zstart, zend, zsize  ! z-pencil
   end type DECOMP_FFT_MULTIGRID
   
   type(DECOMP_FFT_MULTIGRID), allocatable, dimension(:), target :: FFT_multigrid
@@ -201,8 +207,8 @@ contains
     
     ! check if Igrid has been initialized before with different properties
     if (FFT_multigrid(Igrid)%nx_fft /= 0 .AND. FFT_multigrid(Igrid)%nx_fft /= nx &
-                                         .AND. FFT_multigrid(Igrid)%nx_fft /= ny &
-                                         .AND. FFT_multigrid(Igrid)%nx_fft /= nz &
+                                         .AND. FFT_multigrid(Igrid)%ny_fft /= ny &
+                                         .AND. FFT_multigrid(Igrid)%nz_fft /= nz &
                                          .AND. FFT_multigrid(Igrid)%format /= pencil) then
        errorcode = 4
        call decomp_2d_abort(errorcode, &
@@ -244,6 +250,31 @@ contains
 
     ph => FFT_multigrid(Igrid)%ph
     sp => FFT_multigrid(Igrid)%sp
+
+    ! 2decomp variables 
+    FFT_multigrid(Igrid)%xstart = FFT_multigrid(Igrid)%ph%xst
+    FFT_multigrid(Igrid)%xend   = FFT_multigrid(Igrid)%ph%xen
+    FFT_multigrid(Igrid)%xsize  = FFT_multigrid(Igrid)%ph%xsz
+    
+    FFT_multigrid(Igrid)%ystart = FFT_multigrid(Igrid)%ph%yst
+    FFT_multigrid(Igrid)%yend   = FFT_multigrid(Igrid)%ph%yen
+    FFT_multigrid(Igrid)%ysize  = FFT_multigrid(Igrid)%ph%ysz
+    
+    FFT_multigrid(Igrid)%zstart = FFT_multigrid(Igrid)%ph%zst
+    FFT_multigrid(Igrid)%zend   = FFT_multigrid(Igrid)%ph%zen
+    FFT_multigrid(Igrid)%zsize  = FFT_multigrid(Igrid)%ph%zsz
+
+    ! 2decomp variables pointer association
+    xstart => FFT_multigrid(Igrid)%xstart
+    ystart => FFT_multigrid(Igrid)%ystart
+    zstart => FFT_multigrid(Igrid)%zstart
+    xend => FFT_multigrid(Igrid)%xend
+    yend => FFT_multigrid(Igrid)%yend
+    zend => FFT_multigrid(Igrid)%zend
+    xsize => FFT_multigrid(Igrid)%xsize
+    ysize => FFT_multigrid(Igrid)%ysize
+    zsize => FFT_multigrid(Igrid)%zsize
+  
 
     sz = ph%ysz(1)*ph%ysz(2)*ph%ysz(3)
     FFT_multigrid(Igrid)%wk2_c2c_p = fftw_alloc_complex(sz)
@@ -311,6 +342,17 @@ contains
   wk13_p    => FFT_multigrid(Igrid)%wk13_p   
   plan      => FFT_multigrid(Igrid)%plan  
 
+  !2decomp variable
+  xstart => FFT_multigrid(Igrid)%xstart
+  ystart => FFT_multigrid(Igrid)%ystart
+  zstart => FFT_multigrid(Igrid)%zstart
+  xend => FFT_multigrid(Igrid)%xend
+  yend => FFT_multigrid(Igrid)%yend
+  zend => FFT_multigrid(Igrid)%zend
+  xsize => FFT_multigrid(Igrid)%xsize
+  ysize => FFT_multigrid(Igrid)%ysize
+  zsize => FFT_multigrid(Igrid)%zsize
+  
   end subroutine associate_pointers_decomp_2d_fft
 
   

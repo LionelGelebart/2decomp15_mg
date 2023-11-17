@@ -32,7 +32,6 @@ program fft_test_r2c_mg
   complex(mytype), allocatable, dimension(:,:,:) :: out
   
   integer, dimension(3)         :: fft_start, fft_end, fft_size
-  integer, dimension(3), target :: xstart0,xend0,xsize0
   type(DECOMP_INFO)             :: decomp_ph, decomp_sp
     
   real(mytype), allocatable, dimension(:,:,:) :: in_global, in_g2, in_g3
@@ -79,12 +78,9 @@ if (nrank==0) print *, "----------------- IGRID = ", Igrid
   allocate(in_g3(nx,ny,nz))
   allocate(out_global(nx/2+1,ny,nz))
 
-  !-------------------------------------associate pointers and get grid sizes (in physical and spectral space)
+  !-------------------------------------associate pointers and get grid sizes (spectral space)
   call associate_pointers_decomp_2d_fft(Igrid)
-  call decomp_2d_fft_get_size(fft_start,fft_end,fft_size, xstart0, xend0, xsize0)
-  xstart => xstart0  
-  xend   => xend0
-  xsize  => xsize0
+  call decomp_2d_fft_get_size(fft_start,fft_end,fft_size)
   
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Compute a small problem all on rank 0 as reference

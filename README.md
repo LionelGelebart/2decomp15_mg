@@ -15,3 +15,7 @@ run two fft/ifft with diffrent grid sizes
 
 Note : tested with FFT=generic
 
+# commit  e1d7a8ac3 : slight modification
+
+	the pointer association also acts on public variable of 2decomp
+	so that every pointers are on the correct grid
