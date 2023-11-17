@@ -10,6 +10,4 @@ Adjust FFT_inc and FFT_lib
 # Test example : fft_test_r2c_mg
 	run two fft/ifft with diffrent grid sizes
 
-Note :
-* 
-* works also with FFT=generic but fft_test_r2c fails (bug) 
+Note : tested with FFT=generic

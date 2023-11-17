@@ -117,6 +117,8 @@ module decomp_2d_fft
     
     end do
     
+    deallocate(FFT_multigrid_spec)
+
     return
   end subroutine finalize_fft_engine
 
